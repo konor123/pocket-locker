@@ -9,8 +9,11 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
@@ -27,9 +30,11 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var tvAdmin: TextView
     private lateinit var tvService: TextView
+    private lateinit var tvBattery: TextView
     private lateinit var tvSensors: TextView
     private lateinit var btnAdmin: Button
     private lateinit var btnToggle: Button
+    private lateinit var btnBattery: Button
     private lateinit var etLux: EditText
     private lateinit var etDelay: EditText
     private lateinit var btnSave: Button
@@ -44,15 +49,18 @@ class MainActivity : AppCompatActivity() {
 
         tvAdmin = findViewById(R.id.tvAdmin)
         tvService = findViewById(R.id.tvService)
+        tvBattery = findViewById(R.id.tvBattery)
         tvSensors = findViewById(R.id.tvSensors)
         btnAdmin = findViewById(R.id.btnAdmin)
         btnToggle = findViewById(R.id.btnToggle)
+        btnBattery = findViewById(R.id.btnBattery)
         etLux = findViewById(R.id.etLux)
         etDelay = findViewById(R.id.etDelay)
         btnSave = findViewById(R.id.btnSave)
 
         btnAdmin.setOnClickListener { requestAdmin() }
         btnToggle.setOnClickListener { toggleService() }
+        btnBattery.setOnClickListener { requestIgnoreBatteryOptimizations() }
         btnSave.setOnClickListener { saveSettings() }
 
         etLux.setText(prefs.luxThreshold.toString())
@@ -82,6 +90,10 @@ class MainActivity : AppCompatActivity() {
         tvService.text = if (running) "모니터링: 동작 중" else "모니터링: 중지됨"
         btnToggle.text = if (running) "모니터링 중지" else "모니터링 시작"
 
+        val battIgnored = isBatteryOptIgnored()
+        tvBattery.text = if (battIgnored) "배터리 최적화: 제외됨 ✓" else "배터리 최적화: 적용 중 ✗ (백그라운드에서 죽을 수 있음)"
+        btnBattery.isEnabled = !battIgnored
+
         val sm = getSystemService(SensorManager::class.java)
         val prox = sm.getDefaultSensor(Sensor.TYPE_PROXIMITY) != null
         val light = sm.getDefaultSensor(Sensor.TYPE_LIGHT) != null
@@ -91,6 +103,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun yn(b: Boolean) = if (b) "있음" else "없음"
+
+    private fun isBatteryOptIgnored(): Boolean {
+        val pm = getSystemService(PowerManager::class.java)
+        return pm.isIgnoringBatteryOptimizations(packageName)
+    }
+
+    private fun requestIgnoreBatteryOptimizations() {
+        // 제조사 배터리 최적화(도즈) 대상에서 제외 → 백그라운드에서 서비스가 죽지 않게
+        val intent = Intent(
+            Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+            Uri.parse("package:$packageName")
+        )
+        startActivity(intent)
+    }
 
     private fun requestAdmin() {
         val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {

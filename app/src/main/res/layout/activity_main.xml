@@ -53,6 +53,21 @@
             android:text="모니터링 시작" />
 
         <TextView
+            android:id="@+id/tvBattery"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="배터리 최적화: 확인 중"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnBattery"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="배터리 최적화 제외 요청" />
+
+        <TextView
             android:id="@+id/tvSensors"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
