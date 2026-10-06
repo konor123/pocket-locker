@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_description">주머니 감지 시 화면을 잠그기 위해 사용합니다. 접근성 잠금은 전원 버튼과 같은 방식이라 잠금 후에도 지문으로 잠금해제할 수 있습니다.</string>
+</resources>

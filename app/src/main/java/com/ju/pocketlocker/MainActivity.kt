@@ -2,7 +2,6 @@ package com.ju.pocketlocker
 
 import android.Manifest
 import android.app.ActivityManager
-import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -25,16 +24,16 @@ import androidx.core.content.ContextCompat
 class MainActivity : AppCompatActivity() {
 
     private lateinit var prefs: Prefs
-    private lateinit var dpm: DevicePolicyManager
-    private lateinit var adminComponent: ComponentName
 
-    private lateinit var tvAdmin: TextView
+    private lateinit var tvA11y: TextView
     private lateinit var tvService: TextView
     private lateinit var tvBattery: TextView
     private lateinit var tvSensors: TextView
-    private lateinit var btnAdmin: Button
+    private lateinit var tvLog: TextView
+    private lateinit var btnA11y: Button
     private lateinit var btnToggle: Button
     private lateinit var btnBattery: Button
+    private lateinit var btnClearLog: Button
     private lateinit var etLux: EditText
     private lateinit var etDelay: EditText
     private lateinit var btnSave: Button
@@ -44,24 +43,29 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         prefs = Prefs(this)
-        dpm = getSystemService(DevicePolicyManager::class.java)
-        adminComponent = ComponentName(this, PocketLockAdmin::class.java)
 
-        tvAdmin = findViewById(R.id.tvAdmin)
+        tvA11y = findViewById(R.id.tvA11y)
         tvService = findViewById(R.id.tvService)
         tvBattery = findViewById(R.id.tvBattery)
         tvSensors = findViewById(R.id.tvSensors)
-        btnAdmin = findViewById(R.id.btnAdmin)
+        tvLog = findViewById(R.id.tvLog)
+        btnA11y = findViewById(R.id.btnA11y)
         btnToggle = findViewById(R.id.btnToggle)
         btnBattery = findViewById(R.id.btnBattery)
+        btnClearLog = findViewById(R.id.btnClearLog)
         etLux = findViewById(R.id.etLux)
         etDelay = findViewById(R.id.etDelay)
         btnSave = findViewById(R.id.btnSave)
 
-        btnAdmin.setOnClickListener { requestAdmin() }
+        btnA11y.setOnClickListener { openAccessibilitySettings() }
         btnToggle.setOnClickListener { toggleService() }
         btnBattery.setOnClickListener { requestIgnoreBatteryOptimizations() }
         btnSave.setOnClickListener { saveSettings() }
+        btnClearLog.setOnClickListener {
+            LogStore.clear(this)
+            refreshLog()
+            Toast.makeText(this, "로그를 지웠습니다", Toast.LENGTH_SHORT).show()
+        }
 
         etLux.setText(prefs.luxThreshold.toString())
         etDelay.setText(prefs.lockDelayMs.toString())
@@ -72,7 +76,13 @@ class MainActivity : AppCompatActivity() {
         refresh()
     }
 
-    private fun isAdminActive() = dpm.isAdminActive(adminComponent)
+    private fun isAccessibilityEnabled(): Boolean {
+        val expected = ComponentName(this, PocketAccessibilityService::class.java).flattenToString()
+        val enabled =
+            Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+                ?: return false
+        return enabled.split(':').any { it.equals(expected, ignoreCase = true) }
+    }
 
     @Suppress("DEPRECATION")
     private fun isServiceRunning(): Boolean {
@@ -81,17 +91,23 @@ class MainActivity : AppCompatActivity() {
             .any { it.service.className == PocketLockService::class.java.name }
     }
 
+    private fun isBatteryOptIgnored(): Boolean {
+        val pm = getSystemService(PowerManager::class.java)
+        return pm.isIgnoringBatteryOptimizations(packageName)
+    }
+
     private fun refresh() {
-        val adminOk = isAdminActive()
-        tvAdmin.text = if (adminOk) "기기 관리자: 활성화됨 ✓" else "기기 관리자: 비활성화 ✗ (화면 잠금에 필요)"
-        btnAdmin.isEnabled = !adminOk
+        val a11yOk = isAccessibilityEnabled()
+        tvA11y.text = if (a11yOk) "접근성 서비스: 활성화됨 ✓" else "접근성 서비스: 비활성화 ✗ (화면 잠금에 필요)"
+        btnA11y.isEnabled = !a11yOk
 
         val running = isServiceRunning()
         tvService.text = if (running) "모니터링: 동작 중" else "모니터링: 중지됨"
         btnToggle.text = if (running) "모니터링 중지" else "모니터링 시작"
 
         val battIgnored = isBatteryOptIgnored()
-        tvBattery.text = if (battIgnored) "배터리 최적화: 제외됨 ✓" else "배터리 최적화: 적용 중 ✗ (백그라운드에서 죽을 수 있음)"
+        tvBattery.text =
+            if (battIgnored) "배터리 최적화: 제외됨 ✓" else "배터리 최적화: 적용 중 ✗ (백그라운드에서 죽을 수 있음)"
         btnBattery.isEnabled = !battIgnored
 
         val sm = getSystemService(SensorManager::class.java)
@@ -100,13 +116,19 @@ class MainActivity : AppCompatActivity() {
         val accel = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null
         tvSensors.text = "센서: 근접 ${yn(prox)} · 조도 ${yn(light)} · 가속도 ${yn(accel)}" +
             if (!prox || !accel) "\n※ 근접·가속도 센서가 없으면 동작하지 않습니다" else ""
+
+        refreshLog()
+    }
+
+    private fun refreshLog() {
+        tvLog.text = LogStore.read(this).ifEmpty { "로그가 없습니다" }
     }
 
     private fun yn(b: Boolean) = if (b) "있음" else "없음"
 
-    private fun isBatteryOptIgnored(): Boolean {
-        val pm = getSystemService(PowerManager::class.java)
-        return pm.isIgnoringBatteryOptimizations(packageName)
+    private fun openAccessibilitySettings() {
+        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        Toast.makeText(this, "설치된 앱에서 '주머니 잠금'을 켜주세요", Toast.LENGTH_LONG).show()
     }
 
     private fun requestIgnoreBatteryOptimizations() {
@@ -118,17 +140,6 @@ class MainActivity : AppCompatActivity() {
         startActivity(intent)
     }
 
-    private fun requestAdmin() {
-        val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-            putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
-            putExtra(
-                DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                "주머니에 넣었을 때 화면을 끄고 잠그기 위해 기기 관리자 권한이 필요합니다."
-            )
-        }
-        startActivity(intent)
-    }
-
     private fun toggleService() {
         if (isServiceRunning()) {
             val stop = Intent(this, PocketLockService::class.java)
@@ -137,8 +148,8 @@ class MainActivity : AppCompatActivity() {
             refresh()
             return
         }
-        if (!isAdminActive()) {
-            Toast.makeText(this, "먼저 기기 관리자 권한을 활성화하세요", Toast.LENGTH_LONG).show()
+        if (!isAccessibilityEnabled()) {
+            Toast.makeText(this, "먼저 접근성 서비스를 활성화하세요", Toast.LENGTH_LONG).show()
             return
         }
         if (Build.VERSION.SDK_INT >= 33 &&

@@ -20,22 +20,22 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="주머니에 넣으면 화면을 끄고 잠급니다.\n(근접 + 조도 + 가속도 센서 융합 감지)" />
+            android:text="주머니에 넣으면 화면을 끄고 잠급니다.\n(근접 + 조도 + 가속도 센서 융합 감지)\n접근성 잠금은 전원 버튼과 같은 방식이라 지문 잠금해제가 유지됩니다." />
 
         <TextView
-            android:id="@+id/tvAdmin"
+            android:id="@+id/tvA11y"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
-            android:text="기기 관리자: 확인 중"
+            android:text="접근성 서비스: 확인 중"
             android:textStyle="bold" />
 
         <Button
-            android:id="@+id/btnAdmin"
+            android:id="@+id/btnA11y"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="기기 관리자 권한 요청" />
+            android:text="접근성 설정 열기" />
 
         <TextView
             android:id="@+id/tvService"
@@ -112,6 +112,37 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:text="설정 저장" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="로그"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
+            android:layout_marginTop="8dp"
+            android:background="#11000000">
+
+            <TextView
+                android:id="@+id/tvLog"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="8dp"
+                android:text="로그가 없습니다"
+                android:textSize="12sp"
+                android:fontFamily="monospace" />
+        </ScrollView>
+
+        <Button
+            android:id="@+id/btnClearLog"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="로그 지우기" />
 
         <TextView
             android:layout_width="wrap_content"
