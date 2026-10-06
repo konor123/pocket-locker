@@ -54,7 +54,6 @@ class PocketLockService : Service(), SensorEventListener {
     private lateinit var prefs: Prefs
     private lateinit var sensorManager: SensorManager
     private lateinit var powerManager: PowerManager
-    private var wakeLock: PowerManager.WakeLock? = null
     private var hasLightSensor = false
 
     // 최근 센서 값 (센서 콜백·브로드캐스트 리시버 모두 메인 스레드에서 동작)
@@ -105,8 +104,10 @@ class PocketLockService : Service(), SensorEventListener {
     private fun startForegroundWithNotification() {
         val nm = getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // IMPORTANCE_MIN: 무음·최소 표시. 포그라운드 서비스는 알림 없이 실행 불가라
+            // 시스템상 필수인 최소 형태로만 유지하고, 상태 확인은 앱 내 로그로 한다.
             nm.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "주머니 잠금 모니터링", NotificationManager.IMPORTANCE_LOW)
+                NotificationChannel(CHANNEL_ID, "주머니 잠금 모니터링", NotificationManager.IMPORTANCE_MIN)
             )
         }
         val stopIntent = Intent(this, PocketLockService::class.java).setAction(ACTION_STOP)
@@ -150,9 +151,6 @@ class PocketLockService : Service(), SensorEventListener {
         sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)?.let {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
         }
-        // 화면이 꺼진 뒤에도 주머니에서 꺼내는 것을 감지하기 위한 부분 웨이크락
-        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "pocket-locker:monitor")
-            .also { it.acquire() }
     }
 
     private fun stopMonitoring() {
@@ -160,8 +158,6 @@ class PocketLockService : Service(), SensorEventListener {
             sensorManager.unregisterListener(this)
         } catch (_: Exception) {
         }
-        wakeLock?.let { if (it.isHeld) it.release() }
-        wakeLock = null
         prefs.serviceEnabled = false
     }
 
