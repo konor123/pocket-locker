@@ -18,11 +18,30 @@
 
 조도 센서가 없는 기기에서는 근접+가속도로만 판단한다.
 
+## 설치
+
+### 방법 1: 폰에서 직접 설치
+1. [Releases](https://github.com/konor123/pocket-locker/releases) 페이지에서 최신 APK(`pocket-locker-vX.Y.Z.apk`) 다운로드
+2. 다운로드한 파일 탭 → "알 수 없는 앱 설치" 허용 → 설치
+
+### 방법 2: adb로 설치 (PC)
+1. PC에서 최신 APK 다운로드:
+   ```sh
+   curl -L -o pocket-locker.apk https://github.com/konor123/pocket-locker/releases/download/v1.0.0/pocket-locker-v1.0.0.apk
+   ```
+   (최신 버전의 파일명은 [Releases](https://github.com/konor123/pocket-locker/releases) 페이지에서 확인)
+2. 폰에서 USB 디버깅을 켜고 PC에 연결한 뒤 설치:
+   ```sh
+   adb install pocket-locker.apk
+   ```
+   업데이트(재설치)할 때는 `adb install -r pocket-locker.apk`
+
 ## 사용법
 
 1. 앱 실행 → **기기 관리자 권한 요청** (화면 잠금에 필요, `force-lock` 정책만 사용)
-2. **모니터링 시작** → 상태바에 "주머니 잠금 동작 중" 알림이 뜬다
-3. 주머니에 넣으면 화면이 꺼지고 잠긴다
+2. **배터리 최적화 제외 요청** (제조사 도즈 정책으로 백그라운드에서 서비스가 죽지 않도록)
+3. **모니터링 시작** → 상태바에 "주머니 잠금 동작 중" 알림이 뜬다
+4. 주머니에 넣으면 화면이 꺼지고 잠긴다
 
 설정에서 조도 임계값과 잠금 대기 시간을 조절할 수 있다.
 재부팅 후에는 켜져 있던 모니터링이 자동으로 복원된다.
