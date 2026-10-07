@@ -113,9 +113,8 @@ class MainActivity : AppCompatActivity() {
         val sm = getSystemService(SensorManager::class.java)
         val prox = sm.getDefaultSensor(Sensor.TYPE_PROXIMITY) != null
         val light = sm.getDefaultSensor(Sensor.TYPE_LIGHT) != null
-        val accel = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null
-        tvSensors.text = "센서: 근접 ${yn(prox)} · 조도 ${yn(light)} · 가속도 ${yn(accel)}" +
-            if (!prox || !accel) "\n※ 근접·가속도 센서가 없으면 동작하지 않습니다" else ""
+        tvSensors.text = "센서: 근접 ${yn(prox)} · 조도 ${yn(light)}" +
+            if (!prox) "\n※ 근접 센서가 없으면 동작하지 않습니다" else ""
 
         refreshLog()
     }

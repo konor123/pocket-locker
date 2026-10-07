@@ -20,7 +20,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="주머니에 넣으면 화면을 끄고 잠급니다.\n(근접 + 조도 + 가속도 센서 융합 감지)\n접근성 잠금은 전원 버튼과 같은 방식이라 지문 잠금해제가 유지됩니다." />
+            android:text="주머니에 넣으면 화면을 끄고 잠급니다.\n(근접 + 조도 센서로 감지)\n접근성 잠금은 전원 버튼과 같은 방식이라 지문 잠금해제가 유지됩니다." />
 
         <TextView
             android:id="@+id/tvA11y"

@@ -19,15 +19,18 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import kotlin.math.abs
 
 /**
  * 주머니 감지 포그라운드 서비스.
  *
- * 주머니 상태 판단 (3개 센서 융합):
- *  1. 근접 센서: 물체가 가까움 (주머니 안에서 다리에 닿음)
- *  2. 조도 센서: 임계값(lux)보다 어두움 (주머니 안은 어두움)
- *  3. 가속도 센서: 세로 방향 (|z| < 7.5) — 화면을 아래로 뒤집어 테이블에 둔 경우 제외
+ * 주머니 상태 판단 (근접 + 조도 2개 센서):
+ *  1. 근접 센서: 물체가 가까움 (주머니 안에서 다리/옷감에 닿음) — 필수 조건
+ *  2. 조도 센서: 임계값(lux)보다 어두움 — 보조 조건.
+ *     주머니 안에서는 근접센서를 가리는 것이 빛도 함께 막으므로 두 신호가 항상 같이 간다.
+ *     조도 센서가 없는 기기에서는 근접 센서만으로 판단한다.
+ *
+ * 설계 우선순위: 주머니 감지율(재현율) 최우선. 주머니가 아닐 때의 오작동(예: 테이블에
+ * 엎어두기)은 어느 정도 허용한다. 주머니에서는 반드시 화면이 꺼져야 오조작을 막을 수 있다.
  *
  * 세 조건이 [lockDelayMs] 동안 계속 유지되면 접근성 서비스의
  * GLOBAL_ACTION_LOCK_SCREEN 으로 화면을 잠근다.
@@ -46,9 +49,6 @@ class PocketLockService : Service(), SensorEventListener {
         private const val CHANNEL_ID = "pocket_locker_monitor"
         private const val NOTIF_ID = 1
         private const val TAG = "PocketLockService"
-
-        /** 평평하게 놓인 상태로 판단하는 z축 가속도 기준 (m/s^2). 중력 ≈ 9.8 */
-        private const val FLAT_Z_THRESHOLD = 7.5f
     }
 
     private lateinit var prefs: Prefs
@@ -60,7 +60,6 @@ class PocketLockService : Service(), SensorEventListener {
     private var proxNear = false
     private var hasProxEvent = false
     private var lux = Float.MAX_VALUE
-    private var accelZ = 0f
 
     private var candidateSince = 0L
     private var candidateLogged = false
@@ -138,16 +137,14 @@ class PocketLockService : Service(), SensorEventListener {
 
     private fun startMonitoring() {
         val prox = sensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY)
-        val accel = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        if (prox == null || accel == null) {
-            Log.e(TAG, "필수 센서 없음 (proximity=$prox, accelerometer=$accel)")
-            LogStore.append(this, "시작 실패: 근접/가속도 센서가 없음")
+        if (prox == null) {
+            Log.e(TAG, "근접 센서 없음")
+            LogStore.append(this, "시작 실패: 근접 센서가 없음")
             stopSelf()
             return
         }
-        if (!hasLightSensor) Log.w(TAG, "조도 센서 없음: 근접+가속도만으로 판단합니다")
+        if (!hasLightSensor) Log.w(TAG, "조도 센서 없음: 근접 센서만으로 판단합니다")
         sensorManager.registerListener(this, prox, SensorManager.SENSOR_DELAY_NORMAL)
-        sensorManager.registerListener(this, accel, SensorManager.SENSOR_DELAY_NORMAL)
         sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)?.let {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
         }
@@ -179,7 +176,6 @@ class PocketLockService : Service(), SensorEventListener {
                 hasProxEvent = true
             }
             Sensor.TYPE_LIGHT -> lux = event.values[0]
-            Sensor.TYPE_ACCELEROMETER -> accelZ = event.values[2]
         }
         evaluate()
     }
@@ -188,10 +184,9 @@ class PocketLockService : Service(), SensorEventListener {
 
     private fun isPocketCandidate(): Boolean {
         if (!hasProxEvent || !proxNear) return false
-        // 조도 센서가 있는 기기에서만 어둡기 조건 적용
+        // 조도 센서가 있는 기기에서만 어둡기 조건 적용.
+        // 주머니 안에서는 근접센서를 가리는 것이 빛도 함께 막으므로 두 신호가 항상 같이 간다.
         if (hasLightSensor && lux >= prefs.luxThreshold) return false
-        // 평평하게 엎어/뉘어 놓은 상태(테이블 위) 제외: 주머니에선 보통 세로 방향
-        if (abs(accelZ) > FLAT_Z_THRESHOLD) return false
         return true
     }
 
