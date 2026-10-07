@@ -26,7 +26,7 @@ jobs:
           "$SDKMANAGER" --install "platforms;android-34" "build-tools;34.0.0"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: 8.10.2
 
@@ -34,7 +34,7 @@ jobs:
         run: gradle assembleDebug --stacktrace
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: pocket-locker-debug
           path: app/build/outputs/apk/debug/app-debug.apk
