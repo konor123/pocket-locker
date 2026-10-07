@@ -35,7 +35,9 @@
    curl -L -o pocket-locker.apk https://github.com/konor123/pocket-locker/releases/download/v1.0.0/pocket-locker-v1.0.0.apk
    ```
    (최신 버전의 파일명은 [Releases](https://github.com/konor123/pocket-locker/releases) 페이지에서 확인)
-2. 폰에서 USB 디버깅을 켜고 PC에 연결한 뒤 설치:
+2. adb가 없으면 [Releases](https://github.com/konor123/pocket-locker/releases) 페이지에서 OS에 맞는
+   `platform-tools-*.zip`을 받아 압축 해제 (휴대용 adb, 별도 SDK 설치 불필요)
+3. 폰에서 USB 디버깅을 켜고 PC에 연결한 뒤 설치:
    ```sh
    adb install pocket-locker.apk
    ```
