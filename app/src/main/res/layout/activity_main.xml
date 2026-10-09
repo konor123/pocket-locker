@@ -38,6 +38,21 @@
             android:text="접근성 설정 열기" />
 
         <TextView
+            android:id="@+id/tvNls"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="알림 접근: 확인 중"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnNls"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="알림 접근 설정 열기" />
+
+        <TextView
             android:id="@+id/tvService"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

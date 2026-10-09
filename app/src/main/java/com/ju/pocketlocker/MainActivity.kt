@@ -26,11 +26,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var prefs: Prefs
 
     private lateinit var tvA11y: TextView
+    private lateinit var tvNls: TextView
     private lateinit var tvService: TextView
     private lateinit var tvBattery: TextView
     private lateinit var tvSensors: TextView
     private lateinit var tvLog: TextView
     private lateinit var btnA11y: Button
+    private lateinit var btnNls: Button
     private lateinit var btnToggle: Button
     private lateinit var btnBattery: Button
     private lateinit var btnClearLog: Button
@@ -45,11 +47,13 @@ class MainActivity : AppCompatActivity() {
         prefs = Prefs(this)
 
         tvA11y = findViewById(R.id.tvA11y)
+        tvNls = findViewById(R.id.tvNls)
         tvService = findViewById(R.id.tvService)
         tvBattery = findViewById(R.id.tvBattery)
         tvSensors = findViewById(R.id.tvSensors)
         tvLog = findViewById(R.id.tvLog)
         btnA11y = findViewById(R.id.btnA11y)
+        btnNls = findViewById(R.id.btnNls)
         btnToggle = findViewById(R.id.btnToggle)
         btnBattery = findViewById(R.id.btnBattery)
         btnClearLog = findViewById(R.id.btnClearLog)
@@ -58,6 +62,7 @@ class MainActivity : AppCompatActivity() {
         btnSave = findViewById(R.id.btnSave)
 
         btnA11y.setOnClickListener { openAccessibilitySettings() }
+        btnNls.setOnClickListener { openNotificationListenerSettings() }
         btnToggle.setOnClickListener { toggleService() }
         btnBattery.setOnClickListener { requestIgnoreBatteryOptimizations() }
         btnSave.setOnClickListener { saveSettings() }
@@ -84,6 +89,14 @@ class MainActivity : AppCompatActivity() {
         return enabled.split(':').any { it.equals(expected, ignoreCase = true) }
     }
 
+    private fun isNotificationAccessEnabled(): Boolean {
+        val expected = ComponentName(this, PocketKeepAliveService::class.java).flattenToString()
+        val enabled =
+            Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
+                ?: return false
+        return enabled.split(':').any { it.equals(expected, ignoreCase = true) }
+    }
+
     @Suppress("DEPRECATION")
     private fun isServiceRunning(): Boolean {
         val mgr = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
@@ -100,6 +113,10 @@ class MainActivity : AppCompatActivity() {
         val a11yOk = isAccessibilityEnabled()
         tvA11y.text = if (a11yOk) "접근성 서비스: 활성화됨 ✓" else "접근성 서비스: 비활성화 ✗ (화면 잠금에 필요)"
         btnA11y.isEnabled = !a11yOk
+
+        val nlsOk = isNotificationAccessEnabled()
+        tvNls.text = if (nlsOk) "알림 접근: 허용됨 ✓" else "알림 접근: 비허용 ✗ (킵얼라이브에 필요)"
+        btnNls.isEnabled = !nlsOk
 
         val running = isServiceRunning()
         tvService.text = if (running) "모니터링: 동작 중" else "모니터링: 중지됨"
@@ -125,6 +142,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun yn(b: Boolean) = if (b) "있음" else "없음"
 
+    private fun openNotificationListenerSettings() {
+        startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        Toast.makeText(this, "'주머니 잠금 킵얼라이브'를 허용해주세요", Toast.LENGTH_LONG).show()
+    }
+
     private fun openAccessibilitySettings() {
         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         Toast.makeText(this, "설치된 앱에서 '주머니 잠금'을 켜주세요", Toast.LENGTH_LONG).show()
@@ -149,6 +171,10 @@ class MainActivity : AppCompatActivity() {
         }
         if (!isAccessibilityEnabled()) {
             Toast.makeText(this, "먼저 접근성 서비스를 활성화하세요", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (!isNotificationAccessEnabled()) {
+            Toast.makeText(this, "킵얼라이브를 위해 알림 접근을 허용하세요", Toast.LENGTH_LONG).show()
             return
         }
         if (Build.VERSION.SDK_INT >= 33 &&

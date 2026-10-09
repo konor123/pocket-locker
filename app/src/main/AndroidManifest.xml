@@ -44,6 +44,17 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
+        <!-- 킵얼라이브 워치독: 시스템이 직접 바인드해서 프로세스가 죽으면 자동 재시작됨 -->
+        <service
+            android:name=".PocketKeepAliveService"
+            android:label="@string/keepalive_service_label"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <receiver
             android:name=".BootReceiver"
             android:exported="false">
