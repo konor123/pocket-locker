@@ -14,9 +14,10 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
-import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 
@@ -61,18 +62,37 @@ class PocketLockService : Service(), SensorEventListener {
     private var hasProxEvent = false
     private var lux = Float.MAX_VALUE
 
-    private var candidateSince = 0L
     private var candidateLogged = false
     private var lockedForInsertion = false
+
+    // 잠금 타이머: 근접/조도 센서는 값이 바뀔 때만 이벤트가 오므로,
+    // 센서 이벤트 횟수에 의존하지 않고 Handler로 지연 잠금을 예약한다.
+    private val handler = Handler(Looper.getMainLooper())
+    private var lockPending = false
+    private val lockRunnable = Runnable {
+        lockPending = false
+        // 예약 시점의 마지막 센서값으로 최종 판단 (변화가 없으면 후보 상태 유지)
+        if (powerManager.isInteractive && isPocketCandidate() && !lockedForInsertion) {
+            lockScreen()
+        }
+    }
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == Intent.ACTION_SCREEN_ON) {
                 // 화면이 켜지면(=사용자가 꺼냄) 다음 주머니 삽입에 대비해 리셋
-                candidateSince = 0L
+                cancelPendingLock()
                 candidateLogged = false
                 lockedForInsertion = false
             }
+        }
+    }
+
+    /** 예약된 잠금을 취소한다 */
+    private fun cancelPendingLock() {
+        if (lockPending) {
+            handler.removeCallbacks(lockRunnable)
+            lockPending = false
         }
     }
 
@@ -151,6 +171,7 @@ class PocketLockService : Service(), SensorEventListener {
     }
 
     private fun stopMonitoring() {
+        cancelPendingLock()
         try {
             sensorManager.unregisterListener(this)
         } catch (_: Exception) {
@@ -192,20 +213,17 @@ class PocketLockService : Service(), SensorEventListener {
 
     private fun evaluate() {
         if (!powerManager.isInteractive) return // 화면이 이미 꺼져 있으면 할 일 없음
-        val now = SystemClock.elapsedRealtime()
         if (isPocketCandidate()) {
-            if (candidateSince == 0L) {
-                candidateSince = now
-                if (!candidateLogged) {
-                    candidateLogged = true
-                    LogStore.append(this, "주머니 후보 감지됨 (잠금 대기 중)")
-                }
+            if (!candidateLogged) {
+                candidateLogged = true
+                LogStore.append(this, "주머니 후보 감지됨 (잠금 대기 중)")
             }
-            if (!lockedForInsertion && now - candidateSince >= prefs.lockDelayMs) {
-                lockScreen()
+            if (!lockPending && !lockedForInsertion) {
+                lockPending = true
+                handler.postDelayed(lockRunnable, prefs.lockDelayMs)
             }
         } else {
-            candidateSince = 0L
+            cancelPendingLock()
             candidateLogged = false
         }
         // 주머니에서 꺼내면(근접 해제) 다음 삽입 때 다시 잠그도록 리셋
