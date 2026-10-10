@@ -25,11 +25,15 @@
 
 ## 설치
 
-### 방법 1: 폰에서 직접 설치
+### 방법 1: 원클릭 업데이트 (Windows, PC)
+1. [Releases](https://github.com/konor123/pocket-locker/releases) 페이지에서 `update-pocket-locker.bat` 다운로드
+2. 더블클릭 → 최신 APK 다운로드부터 설치까지 자동 수행 (adb가 없으면 휴대용 adb도 자동 다운로드)
+
+### 방법 2: 폰에서 직접 설치
 1. [Releases](https://github.com/konor123/pocket-locker/releases) 페이지에서 최신 APK(`pocket-locker-vX.Y.Z.apk`) 다운로드
 2. 다운로드한 파일 탭 → "알 수 없는 앱 설치" 허용 → 설치
 
-### 방법 2: adb로 설치 (PC)
+### 방법 3: adb로 설치 (PC)
 1. PC에서 최신 APK 다운로드:
    ```sh
    curl -L -o pocket-locker.apk https://github.com/konor123/pocket-locker/releases/download/v1.0.0/pocket-locker-v1.0.0.apk
