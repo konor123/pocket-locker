@@ -1,28 +1,26 @@
 package com.ju.pocketlocker
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.app.Service
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.pm.ServiceInfo
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.os.Build
 import android.os.Handler
-import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.service.notification.NotificationListenerService
 import android.util.Log
-import androidx.core.app.NotificationCompat
 
 /**
- * 주머니 감지 포그라운드 서비스.
+ * 주머니 감지 모니터링 서비스 (musicinfo 앱의 방식 참고).
+ *
+ * NotificationListenerService는 시스템이 직접 바인드하는 서비스라서
+ * 포그라운드 알림 없이도 프로세스 우선순위가 시스템급으로 유지되고,
+ * 프로세스가 죽으면 시스템이 자동으로 다시 바인드(재시작)해준다.
  *
  * 주머니 상태 판단 (근접 + 조도 2개 센서):
  *  1. 근접 센서: 물체가 가까움 (주머니 안에서 다리/옷감에 닿음) — 필수 조건
@@ -33,29 +31,27 @@ import androidx.core.app.NotificationCompat
  * 설계 우선순위: 주머니 감지율(재현율) 최우선. 주머니가 아닐 때의 오작동(예: 테이블에
  * 엎어두기)은 어느 정도 허용한다. 주머니에서는 반드시 화면이 꺼져야 오조작을 막을 수 있다.
  *
- * 세 조건이 [lockDelayMs] 동안 계속 유지되면 접근성 서비스의
+ * 후보 상태가 [lockDelayMs] 동안 계속 유지되면 접근성 서비스의
  * GLOBAL_ACTION_LOCK_SCREEN 으로 화면을 잠근다.
  * 전원 버튼과 같은 방식이라 잠금 후에도 지문 잠금해제가 동작한다.
- * (DevicePolicyManager.lockNow()는 강력 인증을 요구해서 지문 대신 PIN을 요구하게 됨)
  *
  * 주머니에서 꺼내면(근접 해제 또는 화면 켜짐) 상태가 리셋되어 다음에 넣을 때 다시 잠근다.
- *
- * 서비스 보호: 포그라운드 서비스 + START_STICKY + 배터리 최적화 제외 요청으로
- * 시스템/제조사에 의해 종료되지 않도록 한다. (안드로이드에 '중요 프로세스 지정' API는 없음)
  */
-class PocketLockService : Service(), SensorEventListener {
+class PocketMonitorService : NotificationListenerService(), SensorEventListener {
 
     companion object {
-        const val ACTION_STOP = "com.ju.pocketlocker.ACTION_STOP"
-        private const val CHANNEL_ID = "pocket_locker_monitor"
-        private const val NOTIF_ID = 1
-        private const val TAG = "PocketLockService"
+        private const val TAG = "PocketMonitor"
+
+        @Volatile
+        var instance: PocketMonitorService? = null
+            private set
     }
 
     private lateinit var prefs: Prefs
     private lateinit var sensorManager: SensorManager
     private lateinit var powerManager: PowerManager
     private var hasLightSensor = false
+    private var monitoringActive = false
 
     // 최근 센서 값 (센서 콜백·브로드캐스트 리시버 모두 메인 스레드에서 동작)
     private var proxNear = false
@@ -105,78 +101,26 @@ class PocketLockService : Service(), SensorEventListener {
         registerReceiver(screenReceiver, IntentFilter(Intent.ACTION_SCREEN_ON))
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            LogStore.append(this, "모니터링 중지됨")
-            stopMonitoring()
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
-            return START_NOT_STICKY
-        }
-        startForegroundWithNotification()
-        startMonitoring()
-        prefs.serviceEnabled = true
-        LogStore.append(this, "모니터링 시작됨")
-        return START_STICKY
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        instance = this
+        Log.i(TAG, "시스템 바인드됨")
+        LogStore.append(this, "모니터링 서비스 연결됨")
+        // 이전에 켜져 있었으면(또는 재바인드) 모니터링 복원
+        setMonitoringEnabled(prefs.serviceEnabled)
     }
 
-    private fun startForegroundWithNotification() {
-        val nm = getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // IMPORTANCE_MIN: 무음·최소 표시. 포그라운드 서비스는 알림 없이 실행 불가라
-            // 시스템상 필수인 최소 형태로만 유지하고, 상태 확인은 앱 내 로그로 한다.
-            nm.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "주머니 잠금 모니터링", NotificationManager.IMPORTANCE_MIN)
-            )
-        }
-        val stopIntent = Intent(this, PocketLockService::class.java).setAction(ACTION_STOP)
-        val stopPi = PendingIntent.getService(
-            this, 0, stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val openPi = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        // 포그라운드 서비스는 시스템상 알림이 필수라 최소 형태로만 유지.
-        // 상태 확인은 앱 내 설정 화면 하단의 로그로 한다.
-        val notif = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("주머니 잠금 동작 중")
-            .setContentText("주머니에 넣으면 화면을 끄고 잠급니다")
-            .setSmallIcon(android.R.drawable.ic_lock_lock)
-            .setContentIntent(openPi)
-            .setOngoing(true)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "중지", stopPi)
-            .build()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        } else {
-            startForeground(NOTIF_ID, notif)
-        }
-    }
-
-    private fun startMonitoring() {
-        val prox = sensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY)
-        if (prox == null) {
-            Log.e(TAG, "근접 센서 없음")
-            LogStore.append(this, "시작 실패: 근접 센서가 없음")
-            stopSelf()
-            return
-        }
-        if (!hasLightSensor) Log.w(TAG, "조도 센서 없음: 근접 센서만으로 판단합니다")
-        sensorManager.registerListener(this, prox, SensorManager.SENSOR_DELAY_NORMAL)
-        sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
-        }
-    }
-
-    private fun stopMonitoring() {
-        cancelPendingLock()
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        Log.w(TAG, "시스템 바인드 해제됨: 재바인드 요청")
+        LogStore.append(this, "모니터링 서비스 해제됨 → 재연결 요청")
+        stopMonitoring()
+        if (instance === this) instance = null
         try {
-            sensorManager.unregisterListener(this)
-        } catch (_: Exception) {
+            requestRebind(ComponentName(this, PocketMonitorService::class.java))
+        } catch (e: Exception) {
+            Log.w(TAG, "재바인드 요청 실패", e)
         }
-        prefs.serviceEnabled = false
     }
 
     override fun onDestroy() {
@@ -188,7 +132,40 @@ class PocketLockService : Service(), SensorEventListener {
         super.onDestroy()
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    /** 모니터링 켜기/끄기 (설정 화면 토글에서 호출, 중복 호출 안전) */
+    fun setMonitoringEnabled(enabled: Boolean) {
+        if (enabled) startMonitoring() else stopMonitoring()
+    }
+
+    private fun startMonitoring() {
+        if (monitoringActive) return
+        val prox = sensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY)
+        if (prox == null) {
+            Log.e(TAG, "근접 센서 없음")
+            LogStore.append(this, "시작 실패: 근접 센서가 없음")
+            prefs.serviceEnabled = false
+            return
+        }
+        if (!hasLightSensor) Log.w(TAG, "조도 센서 없음: 근접 센서만으로 판단합니다")
+        sensorManager.registerListener(this, prox, SensorManager.SENSOR_DELAY_NORMAL)
+        sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
+        }
+        monitoringActive = true
+        LogStore.append(this, "모니터링 시작됨")
+    }
+
+    private fun stopMonitoring() {
+        cancelPendingLock()
+        if (monitoringActive) {
+            try {
+                sensorManager.unregisterListener(this)
+            } catch (_: Exception) {
+            }
+            monitoringActive = false
+            LogStore.append(this, "모니터링 중지됨")
+        }
+    }
 
     override fun onSensorChanged(event: SensorEvent) {
         when (event.sensor.type) {

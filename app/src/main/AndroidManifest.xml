@@ -1,10 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
@@ -22,14 +18,17 @@
             </intent-filter>
         </activity>
 
+        <!-- 주머니 감지 모니터링: 시스템이 직접 바인드하는 NotificationListenerService.
+             포그라운드 알림 없이도 시스템급 우선순위로 살아있고, 죽으면 자동 재바인드됨.
+             부팅 후에도 시스템이 자동으로 바인드하므로 별도 BootReceiver 불필요. -->
         <service
-            android:name=".PocketLockService"
-            android:exported="false"
-            android:stopWithTask="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="주머니 감지 시 화면 잠금 (근접/조도/가속도 센서 모니터링)" />
+            android:name=".PocketMonitorService"
+            android:label="@string/monitor_service_label"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
         </service>
 
         <service
@@ -43,25 +42,6 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
-
-        <!-- 킵얼라이브 워치독: 시스템이 직접 바인드해서 프로세스가 죽으면 자동 재시작됨 -->
-        <service
-            android:name=".PocketKeepAliveService"
-            android:label="@string/keepalive_service_label"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.service.notification.NotificationListenerService" />
-            </intent-filter>
-        </service>
-
-        <receiver
-            android:name=".BootReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-            </intent-filter>
-        </receiver>
 
     </application>
 

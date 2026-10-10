@@ -1,15 +1,10 @@
 package com.ju.pocketlocker
 
-import android.Manifest
-import android.app.ActivityManager
 import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
@@ -18,8 +13,6 @@ import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 
 class MainActivity : AppCompatActivity() {
 
@@ -90,18 +83,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun isNotificationAccessEnabled(): Boolean {
-        val expected = ComponentName(this, PocketKeepAliveService::class.java).flattenToString()
+        val expected = ComponentName(this, PocketMonitorService::class.java).flattenToString()
         val enabled =
             Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
                 ?: return false
         return enabled.split(':').any { it.equals(expected, ignoreCase = true) }
-    }
-
-    @Suppress("DEPRECATION")
-    private fun isServiceRunning(): Boolean {
-        val mgr = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        return mgr.getRunningServices(Int.MAX_VALUE)
-            .any { it.service.className == PocketLockService::class.java.name }
     }
 
     private fun isBatteryOptIgnored(): Boolean {
@@ -115,12 +101,18 @@ class MainActivity : AppCompatActivity() {
         btnA11y.isEnabled = !a11yOk
 
         val nlsOk = isNotificationAccessEnabled()
-        tvNls.text = if (nlsOk) "알림 접근: 허용됨 ✓" else "알림 접근: 비허용 ✗ (킵얼라이브에 필요)"
+        tvNls.text = if (nlsOk) "알림 접근: 허용됨 ✓" else "알림 접근: 비허용 ✗ (모니터링에 필요)"
         btnNls.isEnabled = !nlsOk
 
-        val running = isServiceRunning()
-        tvService.text = if (running) "모니터링: 동작 중" else "모니터링: 중지됨"
-        btnToggle.text = if (running) "모니터링 중지" else "모니터링 시작"
+        // 모니터링 상태: pref(켜짐 설정) + NLS 바인드 여부로 표시
+        val monOn = prefs.serviceEnabled
+        val nlsConnected = PocketMonitorService.instance != null
+        tvService.text = when {
+            !monOn -> "모니터링: 꺼짐"
+            nlsConnected -> "모니터링: 동작 중 ✓"
+            else -> "모니터링: 켜짐 (시스템 바인드 대기 중…)"
+        }
+        btnToggle.text = if (monOn) "모니터링 중지" else "모니터링 시작"
 
         val battIgnored = isBatteryOptIgnored()
         tvBattery.text =
@@ -144,7 +136,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun openNotificationListenerSettings() {
         startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-        Toast.makeText(this, "'주머니 잠금 킵얼라이브'를 허용해주세요", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "'주머니 잠금 모니터링'을 허용해주세요", Toast.LENGTH_LONG).show()
     }
 
     private fun openAccessibilitySettings() {
@@ -162,31 +154,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toggleService() {
-        if (isServiceRunning()) {
-            val stop = Intent(this, PocketLockService::class.java)
-                .setAction(PocketLockService.ACTION_STOP)
-            startService(stop)
-            refresh()
+        if (!isNotificationAccessEnabled()) {
+            Toast.makeText(this, "모니터링을 위해 알림 접근을 허용하세요", Toast.LENGTH_LONG).show()
             return
         }
         if (!isAccessibilityEnabled()) {
             Toast.makeText(this, "먼저 접근성 서비스를 활성화하세요", Toast.LENGTH_LONG).show()
             return
         }
-        if (!isNotificationAccessEnabled()) {
-            Toast.makeText(this, "킵얼라이브를 위해 알림 접근을 허용하세요", Toast.LENGTH_LONG).show()
-            return
-        }
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            ActivityCompat.requestPermissions(
-                this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001
-            )
-            return
-        }
-        ContextCompat.startForegroundService(this, Intent(this, PocketLockService::class.java))
+        // NLS 바인딩은 시스템이 관리하므로, 여기서는 설정만 뒤집고
+        // 바인드된 서비스 인스턴스에 직접 전달한다 (미바인드 시 onListenerConnected에서 pref로 복원)
+        prefs.serviceEnabled = !prefs.serviceEnabled
+        PocketMonitorService.instance?.setMonitoringEnabled(prefs.serviceEnabled)
+        val msg = if (prefs.serviceEnabled) "모니터링 시작" else "모니터링 중지"
+        LogStore.append(this, msg)
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         refresh()
     }
 
@@ -204,14 +186,5 @@ class MainActivity : AppCompatActivity() {
         prefs.luxThreshold = lux
         prefs.lockDelayMs = delay
         Toast.makeText(this, "설정 저장됨", Toast.LENGTH_SHORT).show()
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 1001 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
-            toggleService()
-        }
     }
 }

@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.0
+- 포그라운드 서비스 제거, 모니터링을 NotificationListenerService로 이전 (musicinfo 방식)
+  - 알림 영역을 차지하지 않으면서 시스템 바인딩으로 계속 살아있음
+  - 부팅 후에도 시스템이 자동으로 바인드하므로 BootReceiver 제거
+  - 주의: 서비스 이름이 바뀌어서 알림 접근을 다시 허용해야 함
+
 ## v1.3.2
 - 고정 서명 키로 release APK 서명 (GitHub Secrets에 키스토어 등록)
   - 기존 CI debug 빌드는 매번 서명이 바뀌어 업데이트 설치 실패했음
