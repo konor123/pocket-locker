@@ -30,6 +30,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnBattery: Button
     private lateinit var btnClearLog: Button
     private lateinit var etLux: EditText
+    private lateinit var etScreenOff: EditText
     private lateinit var etDelay: EditText
     private lateinit var btnSave: Button
 
@@ -51,6 +52,7 @@ class MainActivity : AppCompatActivity() {
         btnBattery = findViewById(R.id.btnBattery)
         btnClearLog = findViewById(R.id.btnClearLog)
         etLux = findViewById(R.id.etLux)
+        etScreenOff = findViewById(R.id.etScreenOff)
         etDelay = findViewById(R.id.etDelay)
         btnSave = findViewById(R.id.btnSave)
 
@@ -66,6 +68,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         etLux.setText(prefs.luxThreshold.toString())
+        etScreenOff.setText(prefs.screenOffDelayMs.toString())
         etDelay.setText(prefs.lockDelayMs.toString())
     }
 
@@ -174,16 +177,22 @@ class MainActivity : AppCompatActivity() {
 
     private fun saveSettings() {
         val lux = etLux.text.toString().toFloatOrNull()
+        val screenOff = etScreenOff.text.toString().toLongOrNull()
         val delay = etDelay.text.toString().toLongOrNull()
         if (lux == null || lux < 0) {
             Toast.makeText(this, "조도 임계값을 올바르게 입력하세요", Toast.LENGTH_SHORT).show()
             return
         }
-        if (delay == null || delay < 300) {
-            Toast.makeText(this, "잠금 대기 시간은 300ms 이상 입력하세요", Toast.LENGTH_SHORT).show()
+        if (screenOff == null || screenOff < 0) {
+            Toast.makeText(this, "화면 꺼짐 대기 시간을 올바르게 입력하세요", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (delay == null || delay < 0) {
+            Toast.makeText(this, "잠금 대기 시간을 올바르게 입력하세요", Toast.LENGTH_SHORT).show()
             return
         }
         prefs.luxThreshold = lux
+        prefs.screenOffDelayMs = screenOff
         prefs.lockDelayMs = delay
         Toast.makeText(this, "설정 저장됨", Toast.LENGTH_SHORT).show()
     }

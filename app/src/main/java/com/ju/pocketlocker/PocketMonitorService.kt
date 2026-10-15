@@ -31,11 +31,14 @@ import android.util.Log
  * 설계 우선순위: 주머니 감지율(재현율) 최우선. 주머니가 아닐 때의 오작동(예: 테이블에
  * 엎어두기)은 어느 정도 허용한다. 주머니에서는 반드시 화면이 꺼져야 오조작을 막을 수 있다.
  *
- * 후보 상태가 [lockDelayMs] 동안 계속 유지되면 접근성 서비스의
- * GLOBAL_ACTION_LOCK_SCREEN 으로 화면을 잠근다.
- * 전원 버튼과 같은 방식이라 잠금 후에도 지문 잠금해제가 동작한다.
+ * 2단계 동작:
+ *  1단계: 주머니 후보가 screenOffDelayMs(기본 500ms) 지속되면
+ *         PROXIMITY_SCREEN_OFF_WAKE_LOCK으로 화면만 끈다 (전화 받을 때와 같은 방식, 잠금은 안 됨).
+ *  2단계: 화면이 꺼진 후 lockDelayMs(기본 1000ms)가 지나면 접근성 서비스의
+ *         GLOBAL_ACTION_LOCK_SCREEN으로 잠근다 (전원 버튼과 같은 방식이라 지문 잠금해제 유지).
+ *  1초 안에 꺼내면 잠금 없이 화면만 다시 켜진다 (유예 기간).
  *
- * 주머니에서 꺼내면(근접 해제 또는 화면 켜짐) 상태가 리셋되어 다음에 넣을 때 다시 잠근다.
+ * 주머니에서 꺼내면(근접 해제 또는 화면 켜짐) 상태가 리셋되어 다음에 넣을 때 다시 동작한다.
  */
 class PocketMonitorService : NotificationListenerService(), SensorEventListener {
 
@@ -61,35 +64,87 @@ class PocketMonitorService : NotificationListenerService(), SensorEventListener 
     private var candidateLogged = false
     private var lockedForInsertion = false
 
-    // 잠금 타이머: 근접/조도 센서는 값이 바뀔 때만 이벤트가 오므로,
-    // 센서 이벤트 횟수에 의존하지 않고 Handler로 지연 잠금을 예약한다.
+    // 2단계 상태
+    private var screenOffPending = false // 1단계 타이머 예약됨
+    private var lockPending = false // 2단계 타이머 예약됨
+    private var screenForcedOff = false // 근접 웨이크락으로 화면을 끈 상태
+    private var proximityWakeLock: PowerManager.WakeLock? = null
+
     private val handler = Handler(Looper.getMainLooper())
-    private var lockPending = false
+
+    /** 1단계: 후보가 screenOffDelayMs 지속되면 화면만 끈다 */
+    private val screenOffRunnable = Runnable {
+        screenOffPending = false
+        if (!isPocketCandidate() || lockedForInsertion) return@Runnable
+        if (powerManager.isInteractive) {
+            acquireProximityWakeLock()
+            screenForcedOff = true
+            LogStore.append(this, "화면 꺼짐 (잠금 대기 중)")
+            Log.i(TAG, "화면 꺼짐 (잠금 대기 중)")
+        } else {
+            // 이미 꺼져 있음 (화면 타임아웃 등) — 꺼짐 단계로 간주하고 잠금 타이머로
+            LogStore.append(this, "화면 꺼짐 감지 (잠금 대기 중)")
+        }
+        lockPending = true
+        handler.postDelayed(lockRunnable, prefs.lockDelayMs)
+    }
+
+    /** 2단계: 화면이 꺼진 후 lockDelayMs가 지나면 잠금 */
     private val lockRunnable = Runnable {
         lockPending = false
-        // 예약 시점의 마지막 센서값으로 최종 판단 (변화가 없으면 후보 상태 유지)
-        if (powerManager.isInteractive && isPocketCandidate() && !lockedForInsertion) {
-            lockScreen()
+        if (!isPocketCandidate() || lockedForInsertion) return@Runnable
+        // 화면이 켜져 있으면 잠그지 않음 (유예 기간 안에 꺼낸 경우)
+        if (!screenForcedOff && powerManager.isInteractive) return@Runnable
+        if (lockScreen()) {
+            if (screenForcedOff) {
+                releaseProximityWakeLock()
+                screenForcedOff = false
+            }
         }
+        // 잠금 실패 시 화면은 계속 꺼진 상태로 유지 (오조작 방지). 꺼내면 해제됨.
     }
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == Intent.ACTION_SCREEN_ON) {
                 // 화면이 켜지면(=사용자가 꺼냄) 다음 주머니 삽입에 대비해 리셋
-                cancelPendingLock()
+                cancelTimers()
                 candidateLogged = false
                 lockedForInsertion = false
+                if (screenForcedOff) {
+                    releaseProximityWakeLock()
+                    screenForcedOff = false
+                }
             }
         }
     }
 
-    /** 예약된 잠금을 취소한다 */
-    private fun cancelPendingLock() {
+    /** 예약된 타이머를 모두 취소한다 */
+    private fun cancelTimers() {
+        if (screenOffPending) {
+            handler.removeCallbacks(screenOffRunnable)
+            screenOffPending = false
+        }
         if (lockPending) {
             handler.removeCallbacks(lockRunnable)
             lockPending = false
         }
+    }
+
+    /** 화면만 끄는 근접 웨이크락 (전화 수신 시와 같은 방식). 화면이 꺼져도 잠그지는 않는다. */
+    private fun acquireProximityWakeLock() {
+        if (proximityWakeLock?.isHeld == true) return
+        proximityWakeLock = powerManager.newWakeLock(
+            PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK, "pocket-locker:screen-off"
+        ).also { it.acquire() }
+    }
+
+    private fun releaseProximityWakeLock() {
+        try {
+            proximityWakeLock?.let { if (it.isHeld) it.release() }
+        } catch (_: Exception) {
+        }
+        proximityWakeLock = null
     }
 
     override fun onCreate() {
@@ -156,7 +211,11 @@ class PocketMonitorService : NotificationListenerService(), SensorEventListener 
     }
 
     private fun stopMonitoring() {
-        cancelPendingLock()
+        cancelTimers()
+        if (screenForcedOff) {
+            releaseProximityWakeLock()
+            screenForcedOff = false
+        }
         if (monitoringActive) {
             try {
                 sensorManager.unregisterListener(this)
@@ -189,25 +248,41 @@ class PocketMonitorService : NotificationListenerService(), SensorEventListener 
     }
 
     private fun evaluate() {
-        if (!powerManager.isInteractive) return // 화면이 이미 꺼져 있으면 할 일 없음
-        if (isPocketCandidate()) {
+        if (!powerManager.isInteractive) {
+            // 화면 꺼짐 상태: 꺼내기(근접 해제)만 처리한다.
+            // (근접 센서는 화면이 꺼져도 동작하므로 꺼내기를 감지할 수 있다)
+            if (screenForcedOff && !proxNear) {
+                releaseProximityWakeLock()
+                screenForcedOff = false
+                cancelTimers()
+                candidateLogged = false
+                LogStore.append(this, "주머니에서 꺼냄 → 화면 켜짐")
+            }
+            return
+        }
+        if (isPocketCandidate() && !lockedForInsertion) {
             if (!candidateLogged) {
                 candidateLogged = true
-                LogStore.append(this, "주머니 후보 감지됨 (잠금 대기 중)")
+                LogStore.append(this, "주머니 후보 감지됨 (화면 꺼짐 대기 중)")
             }
-            if (!lockPending && !lockedForInsertion) {
-                lockPending = true
-                handler.postDelayed(lockRunnable, prefs.lockDelayMs)
+            if (!screenOffPending && !screenForcedOff && !lockPending) {
+                screenOffPending = true
+                handler.postDelayed(screenOffRunnable, prefs.screenOffDelayMs)
             }
         } else {
-            cancelPendingLock()
+            cancelTimers()
             candidateLogged = false
+            if (screenForcedOff) {
+                releaseProximityWakeLock()
+                screenForcedOff = false
+            }
         }
         // 주머니에서 꺼내면(근접 해제) 다음 삽입 때 다시 잠그도록 리셋
         if (!proxNear) lockedForInsertion = false
     }
 
-    private fun lockScreen() {
+    /** 화면 잠금 시도. 성공 시 true */
+    private fun lockScreen(): Boolean {
         val ok = PocketAccessibilityService.instance?.lockScreen() ?: false
         if (ok) {
             lockedForInsertion = true
@@ -217,5 +292,6 @@ class PocketMonitorService : NotificationListenerService(), SensorEventListener 
             LogStore.append(this, "잠금 실패: 접근성 서비스가 연결되지 않음")
             Log.w(TAG, "접근성 서비스 미연결: 잠금을 생략합니다")
         }
+        return ok
     }
 }
