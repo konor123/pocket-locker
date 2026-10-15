@@ -132,7 +132,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshLog() {
-        tvLog.text = LogStore.read(this).ifEmpty { "로그가 없습니다" }
+        // 최신 로그가 위에 오도록 역순으로 표시 (스크롤 없이 최근 로그 확인 가능)
+        val text = LogStore.read(this)
+        tvLog.text = text.ifEmpty { "로그가 없습니다" }
+            .lines().asReversed().joinToString("\n")
     }
 
     private fun yn(b: Boolean) = if (b) "있음" else "없음"
