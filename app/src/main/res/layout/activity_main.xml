@@ -23,6 +23,24 @@
             android:text="주머니에 넣으면 화면을 끄고 잠급니다.\n(근접 + 조도 센서로 감지)\n1단계: 화면만 꺼짐 → 2단계: 잠금 (각 대기 시간 설정 가능)\n알림 영역을 차지하지 않고 백그라운드에서 동작합니다." />
 
         <TextView
+            android:id="@+id/tvService"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="자동잠금: 확인 중"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnToggle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:minHeight="56dp"
+            android:text="자동잠금 켜기"
+            android:textSize="18sp" />
+
+        <TextView
             android:id="@+id/tvA11y"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -51,21 +69,6 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:text="알림 접근 설정 열기" />
-
-        <TextView
-            android:id="@+id/tvService"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="모니터링: 확인 중"
-            android:textStyle="bold" />
-
-        <Button
-            android:id="@+id/btnToggle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="모니터링 시작" />
 
         <TextView
             android:id="@+id/tvBattery"

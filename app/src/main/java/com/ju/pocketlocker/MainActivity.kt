@@ -107,15 +107,15 @@ class MainActivity : AppCompatActivity() {
         tvNls.text = if (nlsOk) "알림 접근: 허용됨 ✓" else "알림 접근: 비허용 ✗ (모니터링에 필요)"
         btnNls.isEnabled = !nlsOk
 
-        // 모니터링 상태: pref(켜짐 설정) + NLS 바인드 여부로 표시
+        // 자동잠금 상태: pref(켜짐 설정) + NLS 바인드 여부로 표시
         val monOn = prefs.serviceEnabled
         val nlsConnected = PocketMonitorService.instance != null
         tvService.text = when {
-            !monOn -> "모니터링: 꺼짐"
-            nlsConnected -> "모니터링: 동작 중 ✓"
-            else -> "모니터링: 켜짐 (시스템 바인드 대기 중…)"
+            !monOn -> "자동잠금: 꺼짐"
+            nlsConnected -> "자동잠금: 켜짐 ✓ (동작 중)"
+            else -> "자동잠금: 켜짐 (시스템 바인드 대기 중…)"
         }
-        btnToggle.text = if (monOn) "모니터링 중지" else "모니터링 시작"
+        btnToggle.text = if (monOn) "자동잠금 끄기" else "자동잠금 켜기"
 
         val battIgnored = isBatteryOptIgnored()
         tvBattery.text =
@@ -172,7 +172,7 @@ class MainActivity : AppCompatActivity() {
         // 바인드된 서비스 인스턴스에 직접 전달한다 (미바인드 시 onListenerConnected에서 pref로 복원)
         prefs.serviceEnabled = !prefs.serviceEnabled
         PocketMonitorService.instance?.setMonitoringEnabled(prefs.serviceEnabled)
-        val msg = if (prefs.serviceEnabled) "모니터링 시작" else "모니터링 중지"
+        val msg = if (prefs.serviceEnabled) "자동잠금 켜짐" else "자동잠금 꺼짐"
         LogStore.append(this, msg)
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         refresh()

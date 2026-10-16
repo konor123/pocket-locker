@@ -11,8 +11,8 @@ android {
         applicationId = "com.ju.pocketlocker"
         minSdk = 26
         targetSdk = 34
-        versionCode = 11
-        versionName = "1.5.2"
+        versionCode = 12
+        versionName = "1.5.3"
     }
 
     // CI에서 고정 서명 키로 release APK에 서명한다 (서명이 바뀌면 업데이트 설치가 실패하므로).
