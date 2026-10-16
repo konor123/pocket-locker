@@ -9,6 +9,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
@@ -38,6 +39,10 @@ import android.util.Log
  *         GLOBAL_ACTION_LOCK_SCREEN으로 잠근다 (전원 버튼과 같은 방식이라 지문 잠금해제 유지).
  *  1초 안에 꺼내면 잠금 없이 화면만 다시 켜진다 (유예 기간).
  *
+ * 통화 중에는 주머니로 판단하지 않는다 (귀에 댄 상태가 후보 조건과 동일하므로).
+ * 화면 꺼짐은 디스플레이만 끄는 것으로, CPU를 재우거나 깨우지 않는다.
+ * 이후 동작은 전원 버튼을 누른 것과 동일하므로 다른 실행 중 앱에 영향을 주지 않는다.
+ *
  * 주머니에서 꺼내면(근접 해제 또는 화면 켜짐) 상태가 리셋되어 다음에 넣을 때 다시 동작한다.
  */
 class PocketMonitorService : NotificationListenerService(), SensorEventListener {
@@ -53,6 +58,7 @@ class PocketMonitorService : NotificationListenerService(), SensorEventListener 
     private lateinit var prefs: Prefs
     private lateinit var sensorManager: SensorManager
     private lateinit var powerManager: PowerManager
+    private lateinit var audioManager: AudioManager
     private var hasLightSensor = false
     private var monitoringActive = false
 
@@ -152,6 +158,7 @@ class PocketMonitorService : NotificationListenerService(), SensorEventListener 
         prefs = Prefs(this)
         sensorManager = getSystemService(SensorManager::class.java)
         powerManager = getSystemService(PowerManager::class.java)
+        audioManager = getSystemService(AudioManager::class.java)
         hasLightSensor = sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT) != null
         registerReceiver(screenReceiver, IntentFilter(Intent.ACTION_SCREEN_ON))
     }
@@ -240,11 +247,20 @@ class PocketMonitorService : NotificationListenerService(), SensorEventListener 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
     private fun isPocketCandidate(): Boolean {
+        // 통화 중에는 주머니로 판단하지 않음 (전화 앱의 화면 제어를 방해하지 않기 위해).
+        // 귀에 댄 상태가 주머니 후보 조건(근접+어두움)과 동일하기 때문.
+        if (inCall()) return false
         if (!hasProxEvent || !proxNear) return false
         // 조도 센서가 있는 기기에서만 어둡기 조건 적용.
         // 주머니 안에서는 근접센서를 가리는 것이 빛도 함께 막으므로 두 신호가 항상 같이 간다.
         if (hasLightSensor && lux >= prefs.luxThreshold) return false
         return true
+    }
+
+    /** 통화 중 여부 (권한 불필요). 통화 중 귀에 댄 상태는 주머니와 구분이 안 되므로 제외한다. */
+    private fun inCall(): Boolean {
+        val mode = audioManager.mode
+        return mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION
     }
 
     private fun evaluate() {
